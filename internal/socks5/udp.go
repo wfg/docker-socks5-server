@@ -105,14 +105,14 @@ func (u *UDPServer) getAddr(b []byte) (dstAddr *net.UDPAddr, header []byte, data
 		return nil, nil, nil
 	}
 	switch b[3] {
-	case Ipv4Address:
+	case IPv4:
 		dstAddr = &net.UDPAddr{
 			IP:   net.IPv4(b[4], b[5], b[6], b[7]),
 			Port: int(b[8])<<8 | int(b[9]),
 		}
 		header = b[0:10]
 		data = b[10:]
-	case FqdnAddress:
+	case DomainName:
 		domainLength := int(b[4])
 		domain := string(b[5 : 5+domainLength])
 		ipAddr, err := net.ResolveIPAddr("ip", domain)
@@ -126,7 +126,7 @@ func (u *UDPServer) getAddr(b []byte) (dstAddr *net.UDPAddr, header []byte, data
 		}
 		header = b[0 : 7+domainLength]
 		data = b[7+domainLength:]
-	case Ipv6Address:
+	case IPv6:
 		{
 			dstAddr = &net.UDPAddr{
 				IP:   net.IP(b[4:20]),

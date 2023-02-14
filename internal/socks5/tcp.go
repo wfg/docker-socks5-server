@@ -68,6 +68,10 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		authMethod = UserAuth
 		if !contains(clientAuthMethods, UserAuth) {
 			t.log.Printf("client does not support user/pass auth")
+			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
+			if err != nil {
+				t.log.Printf("failed to write no acceptable methods: %v", err)
+			}
 			return
 		}
 		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
@@ -112,14 +116,14 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		}
 		if string(username) != t.config.Username || string(password) != t.config.Password {
 			t.log.Printf("invalid username or password")
-			_, err = srcConn.Write([]byte{UserAuthVersion, AuthFailure})
+			_, err = srcConn.Write([]byte{UserAuthVersion, Failure})
 			if err != nil {
 				t.log.Printf("failed to write auth failure status: %v", err)
 				return
 			}
 			return
 		}
-		_, err = srcConn.Write([]byte{UserAuthVersion, AuthSuccess})
+		_, err = srcConn.Write([]byte{UserAuthVersion, Success})
 		if err != nil {
 			t.log.Printf("failed to write auth success status: %v", err)
 			return
@@ -128,6 +132,10 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		authMethod = NoAuth
 		if !contains(clientAuthMethods, NoAuth) {
 			t.log.Printf("client does not support no auth")
+			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
+			if err != nil {
+				t.log.Printf("failed to write no acceptable methods: %v", err)
+			}
 			return
 		}
 		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
@@ -212,14 +220,14 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		dstConn, err := dialer.Dial("tcp", clientDst)
 		if err != nil {
 			// t.log.Printf("failed to connect to %s: %v", clientDst, err)
-			_, err = srcConn.Write([]byte{SocksVersion, FailureReply, 0, IPv4, 0, 0, 0, 0, 0, 0})
+			_, err = srcConn.Write([]byte{SocksVersion, Failure, 0, IPv4, 0, 0, 0, 0, 0, 0})
 			if err != nil {
 				t.log.Printf("failed to write connect failure reply: %v", err)
 				return
 			}
 			return
 		}
-		_, err = srcConn.Write([]byte{SocksVersion, SuccessReply, 0, IPv4, 0, 0, 0, 0, 0, 0})
+		_, err = srcConn.Write([]byte{SocksVersion, Success, 0, IPv4, 0, 0, 0, 0, 0, 0})
 		if err != nil {
 			t.log.Printf("failed to write connect success reply: %v", err)
 			return
