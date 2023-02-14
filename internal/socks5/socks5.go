@@ -6,6 +6,14 @@ import (
 	"os"
 )
 
+type Config struct {
+	InboundAddress    string
+	Username          string
+	Password          string
+	OutboundInterface string
+	Timeout           int
+}
+
 func StartServer(config Config) {
 	var externalInterface *net.Interface
 	var err error

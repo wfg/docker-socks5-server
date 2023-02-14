@@ -2,12 +2,29 @@ package socks5
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"log"
 	"net"
 	"sync"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+// +----+-----+-------+------+----------+----------+
+// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+// +----+-----+-------+------+----------+----------+
+// | 1  |  1  | X'00' |  1   | Variable |    2     |
+// +----+-----+-------+------+----------+----------+
+func respUDP(conn net.Conn, bindAddr *net.UDPAddr) {
+	resp := []byte{SocksVersion, Success, 0x00, 0x01}
+	buffer := bytes.NewBuffer(resp)
+	binary.Write(buffer, binary.BigEndian, bindAddr.IP.To4())
+	binary.Write(buffer, binary.BigEndian, uint16(bindAddr.Port))
+	conn.Write(buffer.Bytes())
+}
 
 // Udp server struct
 type UDPServer struct {
@@ -30,6 +47,30 @@ func (u *UDPServer) Start() *net.UDPConn {
 	go u.toRemote()
 	u.log.Printf("listening on %v", udpAddr)
 	return u.localConn
+}
+
+// Dial is a helper function to dial a tcp or udp connection
+func dial(network, addr string, outIface *net.Interface, timeout int) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+	if outIface != nil {
+		dialer.Control = func(network, address string, c syscall.RawConn) (err error) {
+			return c.Control(func(fd uintptr) {
+				unix.BindToDevice(int(fd), outIface.Name)
+			})
+		}
+	}
+
+	c, err := dialer.Dial(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if c, ok := c.(*net.TCPConn); ok {
+		c.SetKeepAlive(true)
+	}
+
+	c.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	return c, err
 }
 
 // To remote
