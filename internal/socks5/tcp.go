@@ -17,8 +17,6 @@ import (
 type TCPServer struct {
 	log               *log.Logger
 	config            Config
-	udpConn           *net.UDPConn
-	publicIP          string
 	externalInterface *net.Interface
 }
 

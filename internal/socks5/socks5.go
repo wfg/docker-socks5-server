@@ -26,21 +26,11 @@ func StartServer(config Config) {
 		}
 	}
 
-	udpLogger := log.New(os.Stdout, "", 0)
-	udpLogger.SetOutput(newLogWriter("UDP"))
-	u := &UDPServer{
-		log:               udpLogger,
-		config:            config,
-		externalInterface: externalInterface,
-	}
-	udpConn := u.Start()
-
 	tcpLogger := log.New(os.Stdout, "", 0)
 	tcpLogger.SetOutput(newLogWriter("TCP"))
 	t := &TCPServer{
 		log:               tcpLogger,
 		config:            config,
-		udpConn:           udpConn,
 		externalInterface: externalInterface,
 	}
 	t.Start()
