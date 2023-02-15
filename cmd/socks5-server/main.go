@@ -13,6 +13,7 @@ func main() {
 	flag.StringVar(&config.Password, "p", "", "password")
 	flag.StringVar(&config.OutboundInterface, "iface", "", "specified interface")
 	flag.IntVar(&config.Timeout, "t", 30, "dial timeout in seconds")
+	flag.BoolVar(&config.Debug, "debug", false, "enable debug logging")
 	flag.Parse()
 
 	socks5.StartServer(config)

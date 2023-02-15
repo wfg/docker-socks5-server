@@ -2,18 +2,30 @@ package socks5
 
 import (
 	"fmt"
-	"time"
+	"log"
+	"os"
 )
 
-type logWriter struct {
+type Logger struct {
+	*log.Logger
 	description string
+	debug       bool
 }
 
-func newLogWriter(description string) *logWriter {
-	lw := logWriter{description: description}
-	return &lw
+func NewLogger(description string, debug bool) *Logger {
+	return &Logger{
+		Logger:      log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds|log.LUTC|log.Lshortfile),
+		description: description,
+		debug:       debug,
+	}
 }
 
-func (lw *logWriter) Write(bs []byte) (int, error) {
-	return fmt.Print(time.Now().UTC().Format(time.RFC3339), " [", lw.description, "] ", string(bs))
+func (l *Logger) Printf(format string, v ...interface{}) {
+	l.Output(2, fmt.Sprintf("- "+l.description+" - INFO - "+format, v...))
+}
+
+func (l *Logger) Debugf(format string, v ...any) {
+	if l.debug {
+		l.Output(2, fmt.Sprintf("- "+l.description+" - DEBU - "+format, v...))
+	}
 }

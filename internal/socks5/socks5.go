@@ -3,7 +3,6 @@ package socks5
 import (
 	"log"
 	"net"
-	"os"
 )
 
 type Config struct {
@@ -12,6 +11,7 @@ type Config struct {
 	Password          string
 	OutboundInterface string
 	Timeout           int
+	Debug             bool
 }
 
 func StartServer(config Config) {
@@ -25,9 +25,7 @@ func StartServer(config Config) {
 			log.Fatalln("unable to get external interface", err)
 		}
 	}
-
-	tcpLogger := log.New(os.Stdout, "", 0)
-	tcpLogger.SetOutput(newLogWriter("TCP"))
+	tcpLogger := NewLogger("TCP", config.Debug)
 	t := &TCPServer{
 		log:               tcpLogger,
 		config:            config,

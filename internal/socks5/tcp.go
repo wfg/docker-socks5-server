@@ -3,7 +3,6 @@ package socks5
 import (
 	"encoding/binary"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -15,7 +14,7 @@ import (
 
 // Tcp server struct
 type TCPServer struct {
-	log               *log.Logger
+	log               *Logger
 	config            Config
 	externalInterface *net.Interface
 }
@@ -41,23 +40,23 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	clientSocksVer := make([]byte, 1)
 	n, err := srcConn.Read(clientSocksVer)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read socks version: %v", err)
+		t.log.Debugf("failed to read socks version on client greeting: %v", err)
 		return
 	}
 	if clientSocksVer[0] != SocksVersion {
-		t.log.Printf("invalid socks version: %d", clientSocksVer[0])
+		t.log.Debugf("invalid socks version: %d", clientSocksVer[0])
 		return
 	}
 	numClientAuthMethods := make([]byte, 1)
 	n, err = srcConn.Read(numClientAuthMethods)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read number of client auth methods: %v", err)
+		t.log.Debugf("failed to read number of client auth methods: %v", err)
 		return
 	}
 	clientAuthMethods := make([]byte, numClientAuthMethods[0])
 	n, err = srcConn.Read(clientAuthMethods)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read client auth methods: %v", err)
+		t.log.Debugf("failed to read client auth methods: %v", err)
 		return
 	}
 
@@ -65,65 +64,65 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	if t.config.Username != "" && t.config.Password != "" {
 		authMethod = UserAuth
 		if !contains(clientAuthMethods, UserAuth) {
-			t.log.Printf("client does not support user/pass auth")
+			t.log.Debugf("client does not support user/pass auth")
 			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
 			if err != nil {
-				t.log.Printf("failed to write no acceptable methods: %v", err)
+				t.log.Debugf("failed to write no acceptable methods: %v", err)
 			}
 			return
 		}
 		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
 		if err != nil {
-			t.log.Printf("failed to write selected auth method: %v", err)
+			t.log.Debugf("failed to write selected auth method: %v", err)
 			return
 		}
 
 		clientUserAuthVersion := make([]byte, 1)
 		n, err = srcConn.Read(clientUserAuthVersion)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read user/pass auth version: %v", err)
+			t.log.Debugf("failed to read user/pass auth version: %v", err)
 			return
 		}
 		if clientUserAuthVersion[0] != UserAuthVersion {
-			t.log.Printf("invalid user/pass auth version: %d", clientUserAuthVersion[0])
+			t.log.Debugf("invalid user/pass auth version: %d", clientUserAuthVersion[0])
 			return
 		}
 		usernameLen := make([]byte, 1)
 		n, err = srcConn.Read(usernameLen)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read client username length: %v", err)
+			t.log.Debugf("failed to read client username length: %v", err)
 			return
 		}
 		username := make([]byte, usernameLen[0])
 		n, err = srcConn.Read(username)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read client username: %v", err)
+			t.log.Debugf("failed to read client username: %v", err)
 			return
 		}
 		passwordLen := make([]byte, 1)
 		n, err = srcConn.Read(passwordLen)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read client password length: %v", err)
+			t.log.Debugf("failed to read client password length: %v", err)
 			return
 		}
 		password := make([]byte, passwordLen[0])
 		n, err = srcConn.Read(password)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read client password: %v", err)
+			t.log.Debugf("failed to read client password: %v", err)
 			return
 		}
 		if string(username) != t.config.Username || string(password) != t.config.Password {
 			t.log.Printf("invalid username or password")
 			_, err = srcConn.Write([]byte{UserAuthVersion, Failure})
 			if err != nil {
-				t.log.Printf("failed to write auth failure status: %v", err)
+				t.log.Debugf("failed to write auth failure status: %v", err)
 				return
 			}
 			return
 		}
 		_, err = srcConn.Write([]byte{UserAuthVersion, Success})
 		if err != nil {
-			t.log.Printf("failed to write auth success status: %v", err)
+			t.log.Debugf("failed to write auth success status: %v", err)
 			return
 		}
 	} else {
@@ -132,13 +131,13 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 			t.log.Printf("client does not support no auth")
 			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
 			if err != nil {
-				t.log.Printf("failed to write no acceptable methods: %v", err)
+				t.log.Debugf("failed to write no acceptable methods: %v", err)
 			}
 			return
 		}
 		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
 		if err != nil {
-			t.log.Printf("failed to write selected auth method: %v", err)
+			t.log.Debugf("failed to write selected auth method: %v", err)
 			return
 		}
 	}
@@ -146,29 +145,29 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	clientSocksVer = make([]byte, 1)
 	n, err = srcConn.Read(clientSocksVer)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read socks version: %v", err)
+		t.log.Debugf("failed to read socks version on client connection request: %v", err)
 		return
 	}
 	if clientSocksVer[0] != SocksVersion {
-		t.log.Printf("invalid socks version: %d", clientSocksVer[0])
+		t.log.Debugf("invalid socks version: %d", clientSocksVer[0])
 		return
 	}
 	command := make([]byte, 1)
 	n, err = srcConn.Read(command)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read command: %v", err)
+		t.log.Debugf("failed to read command: %v", err)
 		return
 	}
 	// ignore the reserved byte
 	_, err = srcConn.Read(make([]byte, 1))
 	if err != nil {
-		t.log.Printf("failed to read reserved byte: %v", err)
+		t.log.Debugf("failed to read reserved byte: %v", err)
 		return
 	}
 	clientDstAddrType := make([]byte, 1)
 	n, err = srcConn.Read(clientDstAddrType)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read client destination address type: %v", err)
+		t.log.Debugf("failed to read client destination address type: %v", err)
 		return
 	}
 	var clientDstAddr []byte
@@ -181,7 +180,7 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		domainNameLen := make([]byte, 1)
 		n, err = srcConn.Read(domainNameLen)
 		if err != nil || n == 0 {
-			t.log.Printf("failed to read domain name length: %v", err)
+			t.log.Debugf("failed to read domain name length: %v", err)
 			return
 		}
 		clientDstAddr = make([]byte, domainNameLen[0])
@@ -191,13 +190,13 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	}
 	n, err = srcConn.Read(clientDstAddr)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read client destination address: %v", err)
+		t.log.Debugf("failed to read client destination address: %v", err)
 		return
 	}
 	clientDstPort := make([]byte, 2)
 	n, err = srcConn.Read(clientDstPort)
 	if err != nil || n == 0 {
-		t.log.Printf("failed to read client destination port: %v", err)
+		t.log.Debugf("failed to read client destination port: %v", err)
 		return
 	}
 	switch command[0] {
@@ -214,20 +213,20 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		}
 
 		clientDst := net.JoinHostPort(string(clientDstAddr), strconv.Itoa(int(binary.BigEndian.Uint16(clientDstPort))))
-		// t.log.Printf("connecting to %s", clientDst)
+		// t.log.Debugf("connecting to %s", clientDst)
 		dstConn, err := dialer.Dial("tcp", clientDst)
 		if err != nil {
-			// t.log.Printf("failed to connect to %s: %v", clientDst, err)
+			// t.log.Debugf("failed to connect to %s: %v", clientDst, err)
 			_, err = srcConn.Write([]byte{SocksVersion, Failure, 0, IPv4, 0, 0, 0, 0, 0, 0})
 			if err != nil {
-				t.log.Printf("failed to write connect failure reply: %v", err)
+				t.log.Debugf("failed to write connect failure reply: %v", err)
 				return
 			}
 			return
 		}
 		_, err = srcConn.Write([]byte{SocksVersion, Success, 0, IPv4, 0, 0, 0, 0, 0, 0})
 		if err != nil {
-			t.log.Printf("failed to write connect success reply: %v", err)
+			t.log.Debugf("failed to write connect success reply: %v", err)
 			return
 		}
 		t.proxy(srcConn, dstConn)
@@ -256,7 +255,7 @@ func (t *TCPServer) proxy(src, dst net.Conn) {
 		defer wg.Done()
 		_, err := io.Copy(src, dst)
 		if err != nil {
-			t.log.Printf("failed to forward data: %v", err)
+			t.log.Debugf("failed to forward data: %v", err)
 		}
 	}()
 
@@ -264,7 +263,7 @@ func (t *TCPServer) proxy(src, dst net.Conn) {
 		defer wg.Done()
 		_, err := io.Copy(dst, src)
 		if err != nil {
-			t.log.Printf("failed to forward data: %v", err)
+			t.log.Debugf("failed to forward data: %v", err)
 		}
 	}()
 
