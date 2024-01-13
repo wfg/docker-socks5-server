@@ -6,10 +6,10 @@ import (
 )
 
 type Config struct {
-	InboundAddress    string
+	ListenAddress     string
 	Username          string
 	Password          string
-	OutboundInterface string
+	ExternalInterface string
 	Timeout           int
 	Debug             bool
 }
@@ -17,10 +17,10 @@ type Config struct {
 func StartServer(config Config) {
 	var externalInterface *net.Interface
 	var err error
-	if config.OutboundInterface == "" {
+	if config.ExternalInterface == "" {
 		externalInterface = nil
 	} else {
-		externalInterface, err = net.InterfaceByName(config.OutboundInterface)
+		externalInterface, err = net.InterfaceByName(config.ExternalInterface)
 		if err != nil {
 			log.Fatalln("unable to get external interface", err)
 		}

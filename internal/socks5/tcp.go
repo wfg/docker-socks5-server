@@ -20,11 +20,11 @@ type TCPServer struct {
 }
 
 func (t *TCPServer) Start() {
-	l, err := net.Listen("tcp", t.config.InboundAddress)
+	l, err := net.Listen("tcp", t.config.ListenAddress)
 	if err != nil {
 		t.log.Fatalf("failed to listen: %v", err)
 	}
-	t.log.Printf("listening on %s", t.config.InboundAddress)
+	t.log.Printf("listening on %s", t.config.ListenAddress)
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -37,9 +37,18 @@ func (t *TCPServer) Start() {
 
 func (t *TCPServer) handle(srcConn net.Conn) {
 	defer srcConn.Close()
+
+	// Receiving the following on initial connection:
+	// +----+----------+----------+
+	// |VER | NMETHODS | METHODS  |
+	// +----+----------+----------+
+	// | 1  |    1     | 1 to 255 |
+	// +----+----------+----------+
+
+	// VER is the first octet and must be X'05' for SOCKS5.
 	clientSocksVer := make([]byte, 1)
 	n, err := srcConn.Read(clientSocksVer)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read socks version on client greeting: %v", err)
 		return
 	}
@@ -47,39 +56,55 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		t.log.Debugf("invalid socks version: %d", clientSocksVer[0])
 		return
 	}
+
+	// NMETHODS is the second octet and is the number of octets in the following METHODS.
 	numClientAuthMethods := make([]byte, 1)
 	n, err = srcConn.Read(numClientAuthMethods)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read number of client auth methods: %v", err)
 		return
 	}
 	clientAuthMethods := make([]byte, numClientAuthMethods[0])
 	n, err = srcConn.Read(clientAuthMethods)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read client auth methods: %v", err)
 		return
 	}
 
-	var authMethod byte
+	// I am only supporting 'no authentication' and 'username/password authentication' methods.
+	// Their values are X'00' and X'02' respectively. The following is returned to the client:
+	// +----+--------+
+	// |VER | METHOD |
+	// +----+--------+
+	// | 1  |   1    |
+	// +----+--------+
+
 	if t.config.Username != "" && t.config.Password != "" {
-		authMethod = UserAuth
 		if !contains(clientAuthMethods, UserAuth) {
-			t.log.Debugf("client does not support user/pass auth")
+			t.log.Debugf("client does not support username/password authentication")
 			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
 			if err != nil {
 				t.log.Debugf("failed to write no acceptable methods: %v", err)
 			}
 			return
 		}
-		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
+		_, err = srcConn.Write([]byte{SocksVersion, UserAuth})
 		if err != nil {
 			t.log.Debugf("failed to write selected auth method: %v", err)
 			return
 		}
 
+		// After agreeing on the username/password authentication method, the client sends the following:
+		// +----+------+----------+------+----------+
+		// |VER | ULEN |  UNAME   | PLEN |  PASSWD  |
+		// +----+------+----------+------+----------+
+		// | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
+		// +----+------+----------+------+----------+
+
+		// VER is the first octet and must be X'01' for username/password authentication.
 		clientUserAuthVersion := make([]byte, 1)
 		n, err = srcConn.Read(clientUserAuthVersion)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read user/pass auth version: %v", err)
 			return
 		}
@@ -87,30 +112,45 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 			t.log.Debugf("invalid user/pass auth version: %d", clientUserAuthVersion[0])
 			return
 		}
+
+		// ULEN is the next octet and it is the number of octets required for the username.
 		usernameLen := make([]byte, 1)
 		n, err = srcConn.Read(usernameLen)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read client username length: %v", err)
 			return
 		}
+		// UNAME is the username itself and requires ULEN octets.
 		username := make([]byte, usernameLen[0])
 		n, err = srcConn.Read(username)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read client username: %v", err)
 			return
 		}
+
+		// PLEN is the next octet and it is the number of octets required for the username.
 		passwordLen := make([]byte, 1)
 		n, err = srcConn.Read(passwordLen)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read client password length: %v", err)
 			return
 		}
+		// PASSWD is the password itself and requires PLEN octets.
 		password := make([]byte, passwordLen[0])
 		n, err = srcConn.Read(password)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read client password: %v", err)
 			return
 		}
+
+		// Once the username and password are read, the following is returned to the client:
+		// +----+--------+
+		// |VER | STATUS |
+		// +----+--------+
+		// | 1  |   1    |
+		// +----+--------+
+
+		// VER must be X'01', and STATUS of X'00' indicates success while X'01' indicates failure.
 		if string(username) != t.config.Username || string(password) != t.config.Password {
 			t.log.Printf("invalid username or password")
 			_, err = srcConn.Write([]byte{UserAuthVersion, Failure})
@@ -126,7 +166,6 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 			return
 		}
 	} else {
-		authMethod = NoAuth
 		if !contains(clientAuthMethods, NoAuth) {
 			t.log.Printf("client does not support no auth")
 			_, err = srcConn.Write([]byte{SocksVersion, NoAcceptableMethods})
@@ -135,16 +174,35 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 			}
 			return
 		}
-		_, err = srcConn.Write([]byte{SocksVersion, authMethod})
+		_, err = srcConn.Write([]byte{SocksVersion, NoAuth})
 		if err != nil {
 			t.log.Debugf("failed to write selected auth method: %v", err)
 			return
 		}
 	}
 
+	// Once authentication negotiation is complete, the client sends its request details.
+	// +----+-----+-------+------+----------+----------+
+	// |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+	// +----+-----+-------+------+----------+----------+
+	// | 1  |  1  | X'00' |  1   | Variable |    2     |
+	// +----+-----+-------+------+----------+----------+
+	// Where:
+	// o  VER    protocol version: X'05'
+	// o  CMD
+	//    o  CONNECT X'01'
+	//    o  BIND X'02'
+	//    o  UDP ASSOCIATE X'03'
+	// o  RSV    RESERVED
+	// o  ATYP   address type of following address
+	//    o  IP V4 address: X'01'
+	//    o  DOMAINNAME: X'03'
+	//    o  IP V6 address: X'04'
+	// o  DST.ADDR       desired destination address
+	// o  DST.PORT desired destination port in network octet order
 	clientSocksVer = make([]byte, 1)
 	n, err = srcConn.Read(clientSocksVer)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read socks version on client connection request: %v", err)
 		return
 	}
@@ -154,19 +212,19 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	}
 	command := make([]byte, 1)
 	n, err = srcConn.Read(command)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read command: %v", err)
 		return
 	}
 	// ignore the reserved byte
-	_, err = srcConn.Read(make([]byte, 1))
-	if err != nil {
+	n, err = srcConn.Read(make([]byte, 1))
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read reserved byte: %v", err)
 		return
 	}
 	clientDstAddrType := make([]byte, 1)
 	n, err = srcConn.Read(clientDstAddrType)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read client destination address type: %v", err)
 		return
 	}
@@ -179,7 +237,7 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 	case DomainName:
 		domainNameLen := make([]byte, 1)
 		n, err = srcConn.Read(domainNameLen)
-		if err != nil || n == 0 {
+		if n == 0 || err != nil {
 			t.log.Debugf("failed to read domain name length: %v", err)
 			return
 		}
@@ -189,16 +247,25 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 		return
 	}
 	n, err = srcConn.Read(clientDstAddr)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read client destination address: %v", err)
 		return
 	}
 	clientDstPort := make([]byte, 2)
 	n, err = srcConn.Read(clientDstPort)
-	if err != nil || n == 0 {
+	if n == 0 || err != nil {
 		t.log.Debugf("failed to read client destination port: %v", err)
 		return
 	}
+
+	// After the request is received, the following is sent to the client:
+	// +----+-----+-------+------+----------+----------+
+	// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+	// +----+-----+-------+------+----------+----------+
+	// | 1  |  1  | X'00' |  1   | Variable |    2     |
+	// +----+-----+-------+------+----------+----------+
+
+	// Only CONNECT is supported.
 	switch command[0] {
 	case Connect:
 		dialer := &net.Dialer{
@@ -214,7 +281,28 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 
 		clientDst := net.JoinHostPort(string(clientDstAddr), strconv.Itoa(int(binary.BigEndian.Uint16(clientDstPort))))
 		// t.log.Debugf("connecting to %s", clientDst)
-		dstConn, err := dialer.Dial("tcp", clientDst)
+		clientDstConn, err := dialer.Dial("tcp", clientDst)
+
+		// Once the connection is established, the client is sent the following:
+		// +----+-----+-------+------+----------+----------+
+		// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+		// +----+-----+-------+------+----------+----------+
+		// | 1  |  1  | X'00' |  1   | Variable |    2     |
+		// +----+-----+-------+------+----------+----------+
+		// Where:
+		//   o  VER    protocol version: X'05'
+		//   o  REP    Reply field:
+		//      o  X'00' succeeded
+		//      o  X'01' general SOCKS server failure
+		//   o  RSV    RESERVED
+		//   o  ATYP   address type of following address
+		//      o  IP V4 address: X'01'
+		//      o  DOMAINNAME: X'03'
+		//      o  IP V6 address: X'04'
+		//   o  BND.ADDR       server bound address
+		//   o  BND.PORT       server bound port in network octet order
+		// Fields marked RESERVED (RSV) must be set to X'00'.
+
 		if err != nil {
 			// t.log.Debugf("failed to connect to %s: %v", clientDst, err)
 			_, err = srcConn.Write([]byte{SocksVersion, Failure, 0, IPv4, 0, 0, 0, 0, 0, 0})
@@ -229,7 +317,7 @@ func (t *TCPServer) handle(srcConn net.Conn) {
 			t.log.Debugf("failed to write connect success reply: %v", err)
 			return
 		}
-		t.proxy(srcConn, dstConn)
+		t.proxy(srcConn, clientDstConn)
 	case Bind:
 		// TODO
 		t.log.Printf("bind not implemented")

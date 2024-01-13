@@ -21,7 +21,8 @@ const (
 
 // Commands
 const (
-	Connect uint8 = iota + 1
+	_ uint8 = iota
+	Connect
 	Bind
 	UDPAssociate
 )
