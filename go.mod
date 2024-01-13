@@ -1,5 +1,5 @@
 module github.com/wfg/socks5-server
 
-go 1.19
+go 1.21
 
-require golang.org/x/sys v0.5.0
+require golang.org/x/sys v0.16.0
