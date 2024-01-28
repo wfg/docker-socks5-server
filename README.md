@@ -1,7 +1,4 @@
 # Containerized SOCKS5 Proxy Server
-
-heavily inspired by https://github.com/net-byte/socks5-server.
-
 ## How do I use it?
 ### Getting the image
 You can either pull it from GitHub Container Registry or build it yourself.
@@ -36,6 +33,3 @@ services:
     container_name: socks5-server
     restart: unless-stopped
 ```
-
-#### Environment variables
-Coming soon.
